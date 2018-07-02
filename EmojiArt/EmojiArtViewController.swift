@@ -8,27 +8,17 @@
 
 import UIKit
 
-extension EmojiArt.EmojiInfo
-{
-    init?(label: UILabel) {
-        if let attributedText = label.attributedText, let font = attributedText.font {
-            x = Int(label.center.x)
-            y = Int(label.center.y)
-            text = attributedText.string
-            size = Int(font.pointSize)
-        } else {
-            return nil
-        }
-    }
-}
-
 class EmojiArtViewController: UIViewController, UIDropInteractionDelegate, UIScrollViewDelegate,
     UICollectionViewDataSource, UICollectionViewDelegate, UICollectionViewDelegateFlowLayout,
-    UICollectionViewDragDelegate, UICollectionViewDropDelegate
+    UICollectionViewDragDelegate, UICollectionViewDropDelegate, EmojiArtViewDelegate
 {
 
     // MARK: Model
-    
+
+    // computed property for our Model
+    // if someone sets this, we'll update our UI
+    // if someone asks for this, we'll cons up a Model from the UI
+
     var emojiArt: EmojiArt? {
         get {
             if let url = emojiArtBackgroundImage.url {
@@ -56,20 +46,51 @@ class EmojiArtViewController: UIViewController, UIDropInteractionDelegate, UIScr
         }
     }
 
+    // MARK: - Document Handling
+
     var document: EmojiArtDocument?
 
-    @IBAction func save(_ sender: UIBarButtonItem? = nil) {
+    // MODIFIED AFTER LECTURE 14
+    // we no longer need a save method or button
+    // because now we are the EmojiArtView's delegate
+    // (search for "delegate = self" below)
+    // and we get notified when the EmojiArtView changes
+    // (we also note when a new image is dropped, search "documentChanged" below)
+    // and so we can just update our UIDocument's Model to match ours
+    // and tell our UIDocument that it has changed
+    // and it will autosave at the next opportune moment
+
+    //  @IBAction func save(_ sender: UIBarButtonItem? = nil) {
+    func documentChanged() {
+        // NO CHANGES *INSIDE* THIS METHOD WERE MADE AFTER LECTURE 14
+        // JUST ITS NAME WAS CHANGED (FROM save TO documentChanged)
+
+        // update the document's Model to match ours
         document?.emojiArt = emojiArt
+        // then tell the document that something has changed
+        // so it will autosave at next best opportunity
         if document?.emojiArt != nil {
             document?.updateChangeCount(.done)
         }
     }
 
     @IBAction func close(_ sender: UIBarButtonItem) {
-        save()
+        // MODIFIED AFTER LECTURE 14
+        // the call to save() that used to be here has been removed
+        // because we no longer explicitly save our document
+        // we just mark that it has been changed
+        // and since we are reliably doing that now
+        // we don't need to try to save it when we close it
+        // UIDocument will automatically autosave when we close()
+        // if it has any unsaved changes
+        // the rest of this method is unchanged from lecture 14
+
+        // set a nice thumbnail instead of an icon for our document
         if document?.emojiArt != nil {
             document?.thumbnail = emojiArtView.snapshot
         }
+        // dismiss ourselves from having been presented modally
+        // and when we're done, close our document
         dismiss(animated: true) {
             self.document?.close()
         }
@@ -77,9 +98,12 @@ class EmojiArtViewController: UIViewController, UIDropInteractionDelegate, UIScr
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
+        // whenever we appear, we'll open our document
+        // (might want to close it in viewDidDisappear, by the way)
         document?.open { success in
             if success {
                 self.title = self.document?.localizedName
+                // update our Model from the document's Model
                 self.emojiArt = self.document?.emojiArt
             }
         }
@@ -106,6 +130,14 @@ class EmojiArtViewController: UIViewController, UIDropInteractionDelegate, UIScr
         }
     }
 
+    // change our scroll view's width and height constraints
+    // in the storyboard
+    // to be the same as the scroll view's content area's size
+    // the width and height are lower priority constraints
+    // than "stay within the edges" and "keep the scroll view centered"
+    // so this will still work for very large content area sizes
+    // (a scroll view's content area gets very large when you zoom in on it)
+
     func scrollViewDidZoom(_ scrollView: UIScrollView) {
         scrollViewHeight.constant = scrollView.contentSize.height
         scrollViewWidth.constant = scrollView.contentSize.width
@@ -115,8 +147,30 @@ class EmojiArtViewController: UIViewController, UIDropInteractionDelegate, UIScr
         return emojiArtView
     }
 
-    private var _emojiArtBackgroundImageURL: URL?
-    
+    // MARK: - Emoji Art View
+
+    // MODIFIED AFTER LECTURE 14
+    // when we create our EmojiArtView, we also set ourself as its delegate
+    // so that we can get emojiArtViewDidChange messages sent to us
+
+    lazy var emojiArtView: EmojiArtView = {
+        let eav = EmojiArtView()
+        eav.delegate = self
+        return eav
+    }()
+
+    // EmojiArtViewDelegate
+
+    func emojiArtViewDidChange(_ sender: EmojiArtView) {
+        // just let our document know that the document has changed
+        // that way it can autosave it at an opportune time
+        documentChanged()
+    }
+
+    // we make this a tuple
+    // so that whenever a background image is set
+    // we also capture the url of that image
+
     var emojiArtBackgroundImage: (url: URL?, image: UIImage?) {
         get {
             return (_emojiArtBackgroundImageURL, emojiArtView.backgroundImage)
@@ -137,9 +191,16 @@ class EmojiArtViewController: UIViewController, UIDropInteractionDelegate, UIScr
         }
     }
 
-    var emojiArtView = EmojiArtView()
+    // this starts with _ because it's not something we set directly
+    // the value of this is owned by the non-_ var emojiArtBackgroundImage
+
+    private var _emojiArtBackgroundImageURL: URL?
 
     // MARK: - Emoji Collection View
+
+    // a String is a Collection of Character
+    // we want this var to be an Array of String
+    // so we use .map to convert it
 
     var emojis = "😀🎁✈️🎱🍎🐶🐝☕️🎼🚲♣️👨‍🎓✏️🌈🤡🎓👻☎️".map { String($0) }
 
@@ -149,37 +210,50 @@ class EmojiArtViewController: UIViewController, UIDropInteractionDelegate, UIScr
             emojiCollectionView.delegate = self
             emojiCollectionView.dragDelegate = self
             emojiCollectionView.dropDelegate = self
+            // dragging in a Collection View is disabled by default on iPhone
+            // we want it enabled on all platforms
             emojiCollectionView.dragInteractionEnabled = true
         }
     }
 
     private var font: UIFont {
+        // adjust for the user's Accessibility font size preference
         return UIFontMetrics(forTextStyle: .body).scaledFont(for: UIFont.preferredFont(forTextStyle: .body).withSize(64.0))
     }
+
+    // addingEmoji is a mode we go into when we want to put up a text field
+    // in section 0 of our Collection View
+    // which allows us to type in more emoji to add to our Collection View
 
     private var addingEmoji = false
 
     @IBAction func addEmoji() {
         addingEmoji = true
+        // reload section zero because now it contains a text field
+        // instead of a button
         emojiCollectionView.reloadSections(IndexSet(integer: 0))
     }
 
     // MARK: - UICollectionViewDataSource
 
     func numberOfSections(in collectionView: UICollectionView) -> Int {
+        // section 0: button or text field to add emoji
+        // section 1: our emoji
         return 2
     }
 
     func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
         switch section {
-            case 0: return 1
-            case 1: return emojis.count
+        case 0: return 1                // either a button or a text field cell
+            case 1: return emojis.count // our emoji
             default: return 0
         }
     }
 
     func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
         if indexPath.section == 1 {
+            // our emoji are shown using an EmojiCollectionViewCell
+            // which has an outlet to a lable to show the emoji
             let cell = collectionView.dequeueReusableCell(withReuseIdentifier: "EmojiCell", for: indexPath)
             if let emojiCell = cell as? EmojiCollectionViewCell {
                 let text = NSAttributedString(string: emojis[indexPath.item], attributes: [.font:font])
@@ -187,13 +261,21 @@ class EmojiArtViewController: UIViewController, UIDropInteractionDelegate, UIScr
             }
             return cell
         } else if addingEmoji {
+            // if we're addingEmoji (and we're being asked for a cell in section 0)
+            // then we need our EmojiInputCell which has a text field in it
             let cell = collectionView.dequeueReusableCell(withReuseIdentifier: "EmojiInputCell", for: indexPath)
             if let inputCell = cell as? TextFieldCollectionViewCell {
+                // the resignationHandler is called when the cell's text field
+                // resigns first responder (i.e. it is not the text field receiving keyboard input)
                 inputCell.resignationHandler = { [weak self, unowned inputCell] in
+                    // have to make self weak and inputCell unowned to prevent memory cycle
                     if let text = inputCell.textField.text {
                         self?.emojis = (text.map { String($0) } + self!.emojis).uniquified
                     }
                     self?.addingEmoji = false
+                    // reload the Collection View
+                    // because section 0 is going to change (back to a + button)
+                    // and because we've added new emoji to section 1
                     self?.emojiCollectionView.reloadData()
                 }
             }
@@ -209,6 +291,14 @@ class EmojiArtViewController: UIViewController, UIDropInteractionDelegate, UIScr
 
     // MARK: - UICollectionViewDelegateFlowLayout
 
+    // section 0's cell should be wider
+    // but only if it's showing the text field (i.e. we're addingEmoji)
+    // note that we are using constants here
+    // that's bad
+    // we should calculate our cell height based on the size of our emoji font
+    // we should also set the height of our Collection View itself based on that
+    // (via an outlet to a constraint on the Collection View in the storyboard)
+
     func collectionView(_ collectionView: UICollectionView, layout collectionViewLayout: UICollectionViewLayout, sizeForItemAt indexPath: IndexPath) -> CGSize {
         if addingEmoji && indexPath.section == 0 {
             return CGSize(width: 300, height: 80)
@@ -219,6 +309,9 @@ class EmojiArtViewController: UIViewController, UIDropInteractionDelegate, UIScr
 
     // MARK: - UICollectionViewDelegate
 
+    // just before we ever display the text field for addingEmoji
+    // let's make it the first responder and so bring up the keyboard
+
     func collectionView(_ collectionView: UICollectionView, willDisplay cell: UICollectionViewCell, forItemAt indexPath: IndexPath) {
         if let inputCell = cell as? TextFieldCollectionViewCell {
             inputCell.textField.becomeFirstResponder()
@@ -228,7 +321,7 @@ class EmojiArtViewController: UIViewController, UIDropInteractionDelegate, UIScr
     // MARK: - UICollectionViewDragDelegate
 
     func collectionView(_ collectionView: UICollectionView, itemsForBeginning session: UIDragSession, at indexPath: IndexPath) -> [UIDragItem] {
-        session.localContext = collectionView
+        session.localContext = collectionView // so we know when a drag "is us"
         return dragItems(at: indexPath)
     }
 
@@ -237,6 +330,9 @@ class EmojiArtViewController: UIViewController, UIDropInteractionDelegate, UIScr
     }
 
     private func dragItems(at indexPath: IndexPath) -> [UIDragItem] {
+        // prevent dragging when we're addingEmoji (just smoother that way)
+        // cellForItem(at:) only works for visible cells
+        // but if we're dragging from a cell, it definitely will be visible
         if !addingEmoji, let attributedString = (emojiCollectionView.cellForItem(at: indexPath) as?
             EmojiCollectionViewCell)?.label.attributedText {
             let dragItem = UIDragItem(itemProvider: NSItemProvider(object: attributedString))
@@ -328,6 +424,30 @@ class EmojiArtViewController: UIViewController, UIDropInteractionDelegate, UIScr
             if let image = images.first as? UIImage {
                 self.imageFetcher.backup = image
             }
+        }
+    }
+}
+// An extension to our Model.
+//
+// Note that this has "UI stuff" in it because it uses UILabel.
+// That's okay because this code is in our Controller (even though it
+// extends code in our Model).  For MVC purposes, it's where the code
+// is defined that matters.
+//
+// Just creates an EmojiArt.EmojiInfo from a UILabel as a failable
+// initializer.  Returns nil if we can't create the EmojiInfo from the
+// given UILabel.
+
+extension EmojiArt.EmojiInfo
+{
+    init?(label: UILabel) {
+        if let attributedText = label.attributedText, let font = attributedText.font {
+            x = Int(label.center.x)
+            y = Int(label.center.y)
+            text = attributedText.string
+            size = Int(font.pointSize)
+        } else {
+            return nil
         }
     }
 }
