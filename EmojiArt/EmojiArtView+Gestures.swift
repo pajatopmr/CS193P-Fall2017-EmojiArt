@@ -36,7 +36,7 @@ extension EmojiArtView
             selectedSubview = recognizer.view
         }
     }
-    
+
     @objc func selectAndMoveSubview(by recognizer: UIPanGestureRecognizer) {
         switch recognizer.state {
         case .began:
@@ -47,12 +47,18 @@ extension EmojiArtView
             if selectedSubview != nil {
                 recognizer.view?.center = recognizer.view!.center.offset(by: recognizer.translation(in: self))
                 recognizer.setTranslation(CGPoint.zero, in: self)
+
+                // Comment out the following to replace it with KVO...
+                // if recognizer.state == .ended {
+                //     delegate?.emojiArtViewDidChange(self)
+                //     NotificationCenter.default.post(name: .EmojiArtViewDidChange, object: self)
+                // }
             }
         default:
             break
         }
     }
-    
+
     func enableRecognizers() {
         if let scrollView = superview as? UIScrollView {
             // if we are in a scroll view, disable its recognizers
@@ -67,7 +73,7 @@ extension EmojiArtView
             gestureRecognizers?.forEach { $0.isEnabled = true }
         }
     }
-    
+
     func disableRecognizers() {
         if let scrollView = superview as? UIScrollView {
             // if we are in a scroll view, re-enable its recognizers
@@ -76,11 +82,11 @@ extension EmojiArtView
         }
         gestureRecognizers?.forEach { $0.isEnabled = false }
     }
-    
+
     @objc func deselectSubview() {
         selectedSubview = nil
     }
-    
+
     @objc func resizeSelectedLabel(by recognizer: UIPinchGestureRecognizer) {
         switch recognizer.state {
         case .changed, .ended:
@@ -88,12 +94,18 @@ extension EmojiArtView
                 label.attributedText = label.attributedText?.withFontScaled(by: recognizer.scale)
                 label.stretchToFit()
                 recognizer.scale = 1.0
+
+                // Comment out the following to replace it with KVO...
+                // if recognizer.state == .ended {
+                //     delegate?.emojiArtViewDidChange(self)
+                //     NotificationCenter.default.post(name: .EmojiArtViewDidChange, object: self)
+                // }
             }
         default:
             break
         }
     }
-    
+
     @objc func selectAndSendSubviewToBack(by recognizer: UITapGestureRecognizer) {
         if recognizer.state == .ended {
             if let view = recognizer.view, let index = subviews.index(of: view) {

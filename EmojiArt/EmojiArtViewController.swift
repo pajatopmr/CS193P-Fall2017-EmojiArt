@@ -10,7 +10,7 @@ import UIKit
 
 class EmojiArtViewController: UIViewController, UIDropInteractionDelegate, UIScrollViewDelegate,
     UICollectionViewDataSource, UICollectionViewDelegate, UICollectionViewDelegateFlowLayout,
-    UICollectionViewDragDelegate, UICollectionViewDropDelegate, EmojiArtViewDelegate
+    UICollectionViewDragDelegate, UICollectionViewDropDelegate
 {
 
     // MARK: Model
@@ -85,6 +85,11 @@ class EmojiArtViewController: UIViewController, UIDropInteractionDelegate, UIScr
         // if it has any unsaved changes
         // the rest of this method is unchanged from lecture 14
 
+        // Use the Notification framework to stop listening here.
+        if let observer = emojiArtViewObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+
         // set a nice thumbnail instead of an icon for our document
         if document?.emojiArt != nil {
             document?.thumbnail = emojiArtView.snapshot
@@ -92,12 +97,40 @@ class EmojiArtViewController: UIViewController, UIDropInteractionDelegate, UIScr
         // dismiss ourselves from having been presented modally
         // and when we're done, close our document
         dismiss(animated: true) {
-            self.document?.close()
+
+            // Modify the following to add a closure to process the
+            // successful close by turning document change watching
+            // off. This brackets turning it on in viewWillAppear().
+            self.document?.close { success in
+                if let observer = self.documentObserver {
+                    NotificationCenter.default.removeObserver(observer)
+                }
+            }
         }
     }
 
+    // Add code to support using Notifications to manage document
+    // changes: an observer and code in viewWillAppear() to start
+    // watching document changes.
+
+    private var documentObserver: NSObjectProtocol?
+    private var emojiArtViewObserver: NSObjectProtocol?
+
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
+
+        // This is where we want to ensure that changes to the
+        // document are watched and the "right thing" is subsequently
+        // done.
+        documentObserver = NotificationCenter.default.addObserver(
+            forName: Notification.Name.UIDocumentStateChanged,
+            object: document,
+            queue: OperationQueue.main,
+            using: { notification in
+                print("documentState changed to \(self.document!.documentState)")
+            }
+        )
+
         // whenever we appear, we'll open our document
         // (might want to close it in viewDidDisappear, by the way)
         document?.open { success in
@@ -105,6 +138,15 @@ class EmojiArtViewController: UIViewController, UIDropInteractionDelegate, UIScr
                 self.title = self.document?.localizedName
                 // update our Model from the document's Model
                 self.emojiArt = self.document?.emojiArt
+                self.emojiArtViewObserver = NotificationCenter.default.addObserver(
+                    forName: .EmojiArtViewDidChange,
+                    object: self.emojiArtView,
+                    queue: OperationQueue.main,
+                    using: { notification in
+                        self.documentChanged()
+                    }
+                )
+
             }
         }
     }
@@ -153,19 +195,7 @@ class EmojiArtViewController: UIViewController, UIDropInteractionDelegate, UIScr
     // when we create our EmojiArtView, we also set ourself as its delegate
     // so that we can get emojiArtViewDidChange messages sent to us
 
-    lazy var emojiArtView: EmojiArtView = {
-        let eav = EmojiArtView()
-        eav.delegate = self
-        return eav
-    }()
-
-    // EmojiArtViewDelegate
-
-    func emojiArtViewDidChange(_ sender: EmojiArtView) {
-        // just let our document know that the document has changed
-        // that way it can autosave it at an opportune time
-        documentChanged()
-    }
+    lazy var emojiArtView = EmojiArtView()
 
     // we make this a tuple
     // so that whenever a background image is set
@@ -408,16 +438,65 @@ class EmojiArtViewController: UIViewController, UIDropInteractionDelegate, UIScr
 
     var imageFetcher: ImageFetcher!
 
+    // Add support for handling errors with data that cannot be
+    // dropped: a variable to maintain the User's preference state
+    // (suppress or do not suppress warnings) about reporting badly
+    // formed URLsstate and a function to present a message to the
+    // User about the error with an chance to change the
+    // suppress/don't suppress state.
+
+    private var suppressBadURLWarnings = false
+
+    private func presentBadURLWarning(for url: URL?) {
+        if !suppressBadURLWarnings {
+            let alert = UIAlertController(
+                title: "Image Transfer Failed",
+                message: "Couldn't transfer the dropped image from its source.\nShow this warning in the future?",
+                preferredStyle: .alert
+            )
+
+            alert.addAction(UIAlertAction(
+                title: "Keep Warning",
+                style: .default
+            ))
+
+            alert.addAction(UIAlertAction(
+                title: "Stop Warning",
+                style: .destructive,
+                handler: { action in
+                    self.suppressBadURLWarnings = true
+            }
+            ))
+            present(alert, animated: true)
+        }
+    }
+
     func dropInteraction(_ interaction: UIDropInteraction, performDrop session: UIDropSession) {
         imageFetcher = ImageFetcher() { (url, image) in
             DispatchQueue.main.async {
                 self.emojiArtBackgroundImage = (url, image)
+                // Use the post-lecture 14 Delegation model for change
+                // notification rather than forcing the User to
+                // manually "save" the document.
+                self.documentChanged()
             }
         }
 
         session.loadObjects(ofClass: NSURL.self) { nsurls in
             if let url = nsurls.first as? URL {
-                self.imageFetcher.fetch(url)
+                // No longer use this approach: self.imageFetcher.fetch(url)
+                // Use this instead to provide a fetch in the background using the global dispatch queue. On success
+                // assign the result back on the main thread and notify the controller that the document has changed.
+                DispatchQueue.global(qos: .userInitiated).async {
+                    if let imageData = try? Data(contentsOf: url.imageURL), let image = UIImage(data: imageData) {
+                        DispatchQueue.main.async {
+                            self.emojiArtBackgroundImage = (url, image)
+                            self.documentChanged()  // previously was save()
+                        }
+                    } else {
+                        self.presentBadURLWarning(for: url)
+                    }
+                }
             }
         }
         session.loadObjects(ofClass: UIImage.self) {images in
