@@ -13,7 +13,22 @@ class EmojiArtViewController: UIViewController, UIDropInteractionDelegate, UIScr
     UICollectionViewDragDelegate, UICollectionViewDropDelegate
 {
 
-    // MARK: Model
+    // MARK: - Navigation
+
+    // Prepare to handle the document info VC segue ...
+    override func prepare(for segue: UIStoryboardSegue, sender: Any?) {
+        if segue.identifier == "Show Document Info" {
+            // Don't forget to use the handle the case of an embedded navigation thingy and specify ".contents"!
+            if let destination = segue.destination.contents as? DocumentInfoViewController {
+                // Don't forget to update the document thumbnail here as it might not yet be available, or it might be
+                // out of date so updating is a good idea.
+                document?.thumbnail = emojiArtView.snapshot
+                destination.document = document
+            }
+        }
+    }
+    
+    // MARK: - Model
 
     // computed property for our Model
     // if someone sets this, we'll update our UI
@@ -96,7 +111,7 @@ class EmojiArtViewController: UIViewController, UIDropInteractionDelegate, UIScr
         }
         // dismiss ourselves from having been presented modally
         // and when we're done, close our document
-        dismiss(animated: true) {
+        presentingViewController?.dismiss(animated: true) {
 
             // Modify the following to add a closure to process the
             // successful close by turning document change watching
