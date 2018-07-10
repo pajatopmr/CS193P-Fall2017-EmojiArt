@@ -10,7 +10,7 @@ import UIKit
 
 class EmojiArtViewController: UIViewController, UIDropInteractionDelegate, UIScrollViewDelegate,
     UICollectionViewDataSource, UICollectionViewDelegate, UICollectionViewDelegateFlowLayout,
-    UICollectionViewDragDelegate, UICollectionViewDropDelegate
+    UICollectionViewDragDelegate, UICollectionViewDropDelegate, UIPopoverPresentationControllerDelegate
 {
 
     // MARK: - Navigation
@@ -24,10 +24,39 @@ class EmojiArtViewController: UIViewController, UIDropInteractionDelegate, UIScr
                 // out of date so updating is a good idea.
                 document?.thumbnail = emojiArtView.snapshot
                 destination.document = document
+
+                // Handle a Popover such that on an iPhone, the default behavior (to show full screen Modal style) is
+                // overridden to use the same approach as on an iPad. It will work.
+                if let ppc = destination.popoverPresentationController {
+                    ppc.delegate = self
+                }
             }
+        } else if segue.identifier == "Embed Document Info" {
+            // Set the embedded doc info vc variable at this point using the segue.
+            embeddedDocInfo = segue.destination.contents as? DocumentInfoViewController
         }
     }
+
+    // Provide access to the document info vc for the Embed segue.
+    private var embeddedDocInfo: DocumentInfoViewController?
+
+    func adaptivePresentationStyle(
+        for controller: UIPresentationController,
+        traitCollection: UITraitCollection) -> UIModalPresentationStyle {
+        // Override the default (to show full screen) by retuning .none which will force the system to use the Popover
+        // style.
+        return .none
+    }
+
+    @IBAction func close(bySegue: UIStoryboardSegue) {
+        close()
+    }
+
+    // Proivde access to the UI controls such that we can set the width and height of the Container view.
+    @IBOutlet weak var embeddedDocInfoHeight: NSLayoutConstraint!
+    @IBOutlet weak var embeddedDocInfoWidth: NSLayoutConstraint!
     
+
     // MARK: - Model
 
     // computed property for our Model
@@ -89,7 +118,7 @@ class EmojiArtViewController: UIViewController, UIDropInteractionDelegate, UIScr
         }
     }
 
-    @IBAction func close(_ sender: UIBarButtonItem) {
+    @IBAction func close(_ sender: UIBarButtonItem? = nil) {
         // MODIFIED AFTER LECTURE 14
         // the call to save() that used to be here has been removed
         // because we no longer explicitly save our document
@@ -143,6 +172,15 @@ class EmojiArtViewController: UIViewController, UIDropInteractionDelegate, UIScr
             queue: OperationQueue.main,
             using: { notification in
                 print("documentState changed to \(self.document!.documentState)")
+                
+                // Update the embedded info UI from the document by ensuring that this is the "normal" case and that
+                // the embedded document info is non-nil. In this case, set the height and width on the document info
+                // view to the preferred height and width from the Embed segue container view.
+                if self.document!.documentState == .normal, let docInfoVC = self.embeddedDocInfo {
+                    docInfoVC.document = self.document
+                    self.embeddedDocInfoWidth.constant = docInfoVC.preferredContentSize.width
+                    self.embeddedDocInfoHeight.constant = docInfoVC.preferredContentSize.height
+                }
             }
         )
 

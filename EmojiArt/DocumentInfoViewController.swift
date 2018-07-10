@@ -14,7 +14,7 @@ class DocumentInfoViewController: UIViewController
     var document: EmojiArtDocument? {
         didSet { updateUI() }
     }
-    
+
     override func viewDidLoad() {
         super.viewDidLoad()
         updateUI()
@@ -23,10 +23,10 @@ class DocumentInfoViewController: UIViewController
     // Update the UI by updating the thumbnail image and the size and creation labels ensuring the document is well
     // formed in the process.
     private func updateUI() {
-        
+
         // Provide a procedural abstraction to handle the size and creation label updates.
         func updateLabels() {
-            
+
             // Provide an encapsulated, inelegant date formatter to help show the creation label.
             let shortDateFormatter: DateFormatter = {
                 let formatter = DateFormatter()
@@ -43,14 +43,14 @@ class DocumentInfoViewController: UIViewController
                 }
             }
         }
-        
+
         // Provide a procedural abstraction to handle the thumnail image update. It consists of two parts: 1) updating
         // the image and 2) updating the aspect ratio constraint.
         func updateThumbnailImage() {
             if thumbnailImageView != nil, thumbnailAspectRatio != nil, let thumbnail = document?.thumbnail {
                 // Update the image.
                 thumbnailImageView.image = thumbnail
-                
+
                 // Update the aspect ratio constraint by removing the existing one and adding a new one.
                 thumbnailImageView.removeConstraint(thumbnailAspectRatio)
                 thumbnailAspectRatio = NSLayoutConstraint(
@@ -64,6 +64,12 @@ class DocumentInfoViewController: UIViewController
                 )
                 thumbnailImageView.addConstraint(thumbnailAspectRatio)
             }
+            // Hide the thumbnail image view and the cancel link text when the presentation controller is a Popover.
+            if presentationController is UIPopoverPresentationController {
+                thumbnailImageView?.isHidden = true
+                returnToDocumentButton?.isHidden = true
+                view.backgroundColor = .clear
+            }
         }
 
         // Do the work using the procedural abstractions.
@@ -71,12 +77,24 @@ class DocumentInfoViewController: UIViewController
         updateThumbnailImage()
     }
 
-    // Wire up the thumbnail image (with aspect ratio), size and creation labels.
+    // Wire up the Popover size control ...
+    @IBOutlet weak var topLevelView: UIStackView!
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        let padding: CGFloat = 30.0
+        if let fittedSize = topLevelView?.sizeThatFits(UILayoutFittingCompressedSize) {
+            preferredContentSize = CGSize(width: fittedSize.width + padding, height: fittedSize.height + padding)
+        }
+    }
+
+    // Wire up the thumbnail image (with aspect ratio), size and creation labels, as well as the cancel link text.
     @IBOutlet weak var thumbnailAspectRatio: NSLayoutConstraint!
     @IBOutlet weak var thumbnailImageView: UIImageView!
     @IBOutlet weak var sizeLabel: UILabel!
     @IBOutlet weak var createdLabel: UILabel!
-    
+    @IBOutlet weak var returnToDocumentButton: UIButton!
+
     // Provide a handler for the done button to have the presenting controller dismiss us.
     @IBAction func done() {
         presentingViewController?.dismiss(animated: true)
